@@ -1,0 +1,89 @@
+library(shiny)   
+library(bslib)          # Sidebar
+library(DT)             # Tabla
+library(plotly)         # Grafica interactivos
+library(ggplot2)        # Graficos 2d
+library(treemapify)     # Grafico de treemapify
+
+
+datos = "https://docs.google.com/spreadsheets/d/e/2PACX-1vShNJnh442gay0BXd5hnYPUK1cC4j3JgKRvdHadU5DincbhNmCbWVmz2GlkqStUq8Ci--bGzlP5LfLg/pub?gid=0&single=true&output=csv" |> read.csv()
+
+variables = names(datos)[!names(datos) %in% c("CLAVE", "Producto", "Descripción")]
+tipo_graficas = c("Barras", "Pastel", "Poligono de frecuencias")
+
+diccionario = setNames(
+  variables, 
+  variables |>
+    stringr::str_replace_all("_", " ") |>
+    stringr::str_replace_all("\\.", " ") |>
+    stringr::str_squish() |>
+    stringr::str_to_lower() |>
+    tools::toTitleCase()
+  )
+
+
+
+
+ui <- page_sidebar(
+  
+  tags$style(
+  HTML("
+    html, body, .container-fluid {
+      height: 100%;
+      margin: 0; !important;
+      padding: 0;!important;
+    }
+  ")
+  ),
+  
+  sidebar = sidebar(
+    h4("Logo aqui"),
+    
+    selectInput(
+      inputId = "columna",
+      label = "Selecciona una variable",
+      choices = diccionario,
+      selectize = F
+    ),
+    
+    selectInput(
+      inputId = "tipo_grafica",
+      label = "Seleccione un tipo de grafica",
+      choices = tipo_graficas,
+      selectize = F
+    ),
+  ),
+  
+  div(
+    style = "display: flex; flex-direction: column; height: 100vh; width: 100%;",
+    div(
+      style = "flex: 0 0 60%; width: 100%; overflow-y: auto;",
+      DTOutput("tabla", height = "100%", width = "100%")
+    ),
+    div(
+      style = "flex: 0 0 40%; width: 100%;",
+      plotlyOutput("grafica", height = "100%", width = "100%")
+    )
+  )
+  
+)
+
+
+
+server <- function(input, output) {
+  
+  data <- reactive({ datos })
+  
+  
+  output$tabla = renderDT({
+    req(data())
+    datatable(data(), options = list(pageLength = 5),filter = "top")
+  })
+  
+}  
+
+
+
+
+
+shinyApp(ui = ui, server = server)

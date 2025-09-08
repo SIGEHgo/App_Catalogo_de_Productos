@@ -1,0 +1,89 @@
+library(shiny)
+library(DT)
+library(plotly)
+library(dplyr)
+library(stringr)
+library(tools)
+
+# Variables disponibles (excluyendo algunas columnas específicas)
+variables <- names(datos)[!names(datos) %in% c("CLAVE", "Producto", "Descripción")]
+tipo_graficas <- c("Barras", "Pastel", "Poligono de frecuencias")
+
+# Diccionario de nombres más legibles
+diccionario <- setNames(
+  variables,
+  variables |>
+    str_replace_all("_", " ") |>
+    str_replace_all("\\.", " ") |>
+    str_squish() |>
+    str_to_lower() |>
+    toTitleCase()
+)
+
+# Interfaz de usuario
+ui <- page_sidebar(
+  sidebar = sidebar(
+    h4("Logo aquí"),
+    
+    selectInput(
+      inputId = "columna",
+      label = "Selecciona una variable",
+      choices = diccionario,
+      selectize = FALSE
+    ),
+    
+    selectInput(
+      inputId = "tipo_grafica",
+      label = "Seleccione un tipo de gráfica",
+      choices = tipo_graficas,
+      selectize = FALSE
+    )
+  ),
+  div(
+    style = "display: flex; flex-direction: column; height: 100vh; width: 100%;",
+    div(
+      style = "flex: 0 0 60%; width: 100%; overflow-y: auto;",
+      DTOutput("tabla", height = "100%", width = "100%")
+    ),
+    div(
+      style = "flex: 0 0 40%; width: 100%;",
+      plotlyOutput("grafica", height = "100%", width = "100%")
+    )
+  )
+)
+
+# Servidor
+server <- function(input, output) {
+  
+  data <- reactive({ datos })
+  
+  # Tabla
+  output$tabla <- renderDT({
+    req(data())
+    datatable(data(), options = list(pageLength = 5), filter = "top")
+  })
+  
+  # Gráfica
+  output$grafica <- renderPlotly({
+    req(data())
+    
+    df <- data() |> 
+      select(all_of(input$columna))
+    
+    tipo <- input$tipo_grafica
+    
+    if (tipo == "Pastel") {
+      plot_ly(df, labels = ~get(input$columna), type = "pie")
+      
+    } else if (tipo == "Poligono de frecuencias") {
+      plot_ly(df, x = ~get(input$columna), type = "histogram") |>
+        layout(yaxis = list(title = "Frecuencia"))
+      
+    } else { # Barras
+      plot_ly(df, x = ~get(input$columna), type = "bar")
+    }
+  })
+}
+
+# Lanzar aplicación
+shinyApp(ui = ui, server = server)
