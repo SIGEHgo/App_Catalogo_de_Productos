@@ -51,7 +51,12 @@ ui <- page_sidebar(
   ),
   
   sidebar = sidebar(
-    h4("Logo aqui"),
+    tags$img(
+      src = "https://raw.githubusercontent.com/Eduardo-Alanis-Garcia/Js/main/Planeacion_dorado.png",     
+      height = "37px",      
+      width = "auto",       
+      style = "display: block; margin: 0 auto;" # Centrar en el sidebar
+    ),
     
     selectInput(
       inputId = "columna",
