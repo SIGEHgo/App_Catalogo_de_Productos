@@ -4,7 +4,6 @@
 
 ### Parche de la actualizacion
 # El dinamismo de tabla grafica funciona al 100 
-# En las graficas se añadio el visualizacion al 100
 
 
 library(shiny)   
@@ -143,10 +142,10 @@ server <- function(input, output, session) {
   })
   
   
-  # plotly click (igual que antes, pero usamos datos_agrupados() para extraer el valor)
+  ### Aqui debe estar el error pensar como corregir para evitar que cuando cambie de input$tipo_grafica me realice el click
   click_grafica <- reactive({
     click = event_data("plotly_click")
-    if (is.null(click)) return(NULL)
+    if (is.null(click) || is.null(input$tipo_grafica)) return(NULL)
     
     if (input$tipo_grafica == "Barras" && !is.null(click$x)) {
       return(click$x)
@@ -242,7 +241,6 @@ observeEvent(click_grafica(), {
         )
       
     } else if (seleccion_grafica == "Pastel") {
-      
       plot_ly(
         data = df,
         labels = ~variable_seleccionada,
@@ -268,7 +266,6 @@ observeEvent(click_grafica(), {
         )
       
     } else if (seleccion_grafica == "Treemapify") {
-      
       plot_ly(
         data = df,
         type = "treemap",
@@ -291,6 +288,9 @@ observeEvent(click_grafica(), {
       cat("Seleccione algo")
     }
   })
+  
+
+  
 } 
 
 
