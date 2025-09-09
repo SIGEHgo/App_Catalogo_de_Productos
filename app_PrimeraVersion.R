@@ -1,11 +1,3 @@
-####################
-### App uptade 1 ###
-####################
-
-### Parche de la actualizacion
-# El dinamismo de tabla grafica funciona al 100 
-
-
 library(shiny)   
 library(bslib)          # Sidebar
 library(DT)             # Tabla
@@ -15,12 +7,6 @@ library(treemapify)     # Grafico de treemapify
 
 
 datos = "https://docs.google.com/spreadsheets/d/e/2PACX-1vShNJnh442gay0BXd5hnYPUK1cC4j3JgKRvdHadU5DincbhNmCbWVmz2GlkqStUq8Ci--bGzlP5LfLg/pub?gid=0&single=true&output=csv" |> read.csv()
-datos = datos |> 
-  dplyr::mutate(dplyr::across(
-    .cols = dplyr::everything(),
-    .fns = ~ ifelse(.x == "", "No hay dato", .x)
-  ))
-
 
 variables = names(datos)[!names(datos) %in% c("CLAVE", "Producto", "Descripción")]
 tipo_graficas = c("Barras", "Pastel", "Treemapify")
@@ -101,122 +87,87 @@ ui <- page_sidebar(
   
 )
 
-server <- function(input, output, session) {
+
+
+server <- function(input, output) {
   
-  data <- reactiveVal(datos)   
+  data <- reactive({ datos })
   
-  datos_filtrados_tabla <- reactive({
-    filtros_tabla = input$tabla_search_columns
-    df = data()
-    if (is.null(filtros_tabla) || all(!nzchar(filtros_tabla))) {
-      return(df)
-    }
-    indice_columna_filtro = which(nzchar(filtros_tabla))
-    cat("Filtro en las columnas: ", indice_columna_filtro)
-    if (length(indice_columna_filtro) == 0) return(df)
+  datos_filtrados = reactive({
+    require(data(), input$columna)
     
-    for (i in indice_columna_filtro) {
-      columna = names(df)[i]
-      texto = filtros_tabla[i]
-      df = df |> dplyr::filter(grepl(texto, as.character(.data[[columna]]), ignore.case = TRUE))
-    }
-    df
-  })
-  
-  
-  datos_agrupados <- reactive({
-    req(datos_filtrados_tabla(), input$columna)
-    df = datos_filtrados_tabla()[[input$columna]] |> as.data.frame()
+    datos = data()
+    
+    df = datos[[input$columna]] |>  as.data.frame()
     names(df)[1] = "variable_seleccionada"
     
-    df = df |>
-      dplyr::mutate(variable_seleccionada = dplyr::if_else( is.na(variable_seleccionada) | variable_seleccionada == "",
-                                                            "Sin dato", as.character(variable_seleccionada)
-      )) |>
-      dplyr::group_by(variable_seleccionada) |>
-      dplyr::summarise(frecuencia = dplyr::n(), .groups = "drop") |>
-      dplyr::arrange(dplyr::desc(frecuencia)) |>
+    df = df |> 
+      dplyr::mutate(variable_seleccionada = dplyr::if_else(condition = variable_seleccionada == "", true = "Sin dato", false = variable_seleccionada)) |> 
+      dplyr::group_by(variable_seleccionada) |> 
+      dplyr::summarise(frecuencia = dplyr::n()) |> 
+      dplyr::ungroup() |> 
+      dplyr::arrange(dplyr::desc(frecuencia)) |> 
       dplyr::mutate(variable_seleccionada = factor(variable_seleccionada, levels = variable_seleccionada))
     
-    df
+    return(df)
   })
   
-  
-  ### Aqui debe estar el error pensar como corregir para evitar que cuando cambie de input$tipo_grafica me realice el click
   click_grafica <- reactive({
     click = event_data("plotly_click")
-    if (is.null(click) || is.null(input$tipo_grafica)) return(NULL)
+    print(click)
+    if (is.null(click)) return(NULL)
     
     if (input$tipo_grafica == "Barras" && !is.null(click$x)) {
       return(click$x)
     }
     if (input$tipo_grafica %in% c("Pastel", "Treemapify") && !is.null(click$pointNumber)) {
-      return(click$pointNumber + 1)
+      return(click$pointNumber + 1)  # Añadir un +1 para tener misma congruencia que barras y data.frame
     }
     return(NULL)
   })
   
+  # Mostrar click, solo es para andar checando en consola
   observeEvent(click_grafica(), {
     cat("Clic en:", click_grafica(), "\n")
   })
   
+  output$tabla = renderDT({    
+    req(data(), datos_filtrados())
+    
+    indice_columna = which(names(data()) == input$columna) + 1 # Dado que datatable inicializa con uno mas
+    filtros = vector(mode = "list", ncol(data()))
+    filtros = lapply(filtros, function(x) list(search = ""))
+    
+    if (!is.null(click_grafica())) {
+      filtros[[indice_columna]] <- list(search = datos_filtrados()$variable_seleccionada[click_grafica()] |>  as.character())
+    }
+    cat("Vamos a imprimir filtros: ", "\n")
+    print(filtros)
   
 
-  output$tabla <- DT::renderDT({
-    req(data())
-    DT::datatable(
-      data(),
-      options = list(pageLength = 5, searchDelay = 1500),
-      filter = "top",
-      rownames = FALSE
-    )
+    datatable(data(), filter = "top", 
+              options = list( pageLength = 5, searchCols = filtros)
+              )
   })
   
-  
-observeEvent(click_grafica(), {
-  req(click_grafica())  
-  
 
-  filtros = input$tabla_search_columns
-  
-  if (is.null(filtros)) {
-    filtros = rep("", ncol(data())) |> as.list()
-  } else {
-    filtros = as.list(filtros)
-  }
-  
-  indice_columna = which(names(data()) == input$columna)
-  seleccionado = datos_agrupados()$variable_seleccionada[click_grafica()] |> as.character()
-  filtros[[indice_columna]] = seleccionado
-  
-  cat("Filtros combinados:\n")
-  print(filtros)
-  
-  DT::updateSearch(
-    proxy = dataTableProxy("tabla"),
-    keywords = list(columns = filtros)
-  )
-})
-
-  
-  
   output$grafica <- renderPlotly({
     seleccion_grafica = input$tipo_grafica
     cat("Se ha seleccionado la gráfica de tipo:", seleccion_grafica, "\n")
     
+
     
-    cat("click limpiado: ", "\n")
-    print(plotly::event_data("plotly_click"))
-    
-    df = datos_agrupados()
+    df = datos_filtrados()
+    cat("Tenemos que datos filtrados es: ", "\n")
     print(df)
     
     if (seleccion_grafica == "Barras") {
-      gg = ggplot(data = df, aes(x = variable_seleccionada, y = frecuencia)) +
+      
+      gg = ggplot(data = df, aes(x = variable_seleccionada, y = frecuencia)) + 
         geom_bar(stat = "identity", fill = "#691c32", color = "#b38e5d",
                  aes(text = paste0(
                    "<b>Variable seleccionada:</b> ", input$columna |> stringr::str_replace_all("_", " ") |> stringr::str_replace_all("\\.", " ") |>
-                     stringr::str_squish() |> stringr::str_to_lower() |> tools::toTitleCase(),
+                     stringr::str_squish() |> stringr::str_to_lower() |> tools::toTitleCase(), 
                    "<br><b>Frecuencia:</b> ", frecuencia)
                  )) +
         geom_text(aes(label = frecuencia, y = frecuencia/2),
@@ -224,13 +175,14 @@ observeEvent(click_grafica(), {
                   size = 4,
                   color = "white") +
         labs(x = gsub("_", " ", input$columna) |> stringr::str_replace_all("_", " ") |> stringr::str_replace_all("\\.", " ") |>
-               stringr::str_squish() |> stringr::str_to_lower() |> tools::toTitleCase(),
+               stringr::str_squish() |> stringr::str_to_lower() |> tools::toTitleCase(),  
              y = "Frecuencia") +
         theme_minimal(base_size = 12) +
         theme(axis.text.x = element_text(angle = 45, hjust = 1, colour = "black", face = "bold"),
               axis.title.x = element_text(color = "black", face = "bold"))
       
-      plotly::ggplotly(gg, tooltip = "text") |>
+      
+      plotly::ggplotly(gg, tooltip = "text") |> 
         plotly::config(
           modeBarButtonsToRemove = list("select2d", "lasso2d","hoverClosestCartesian", "hoverCompareCartesian","toggleSpikelines"),
           scrollZoom = TRUE,
@@ -240,7 +192,8 @@ observeEvent(click_grafica(), {
           displayModeBar = TRUE
         )
       
-    } else if (seleccion_grafica == "Pastel") {
+    }else if(seleccion_grafica == "Pastel"){
+      
       plot_ly(
         data = df,
         labels = ~variable_seleccionada,
@@ -255,8 +208,14 @@ observeEvent(click_grafica(), {
           "<br><b>Porcentaje: </b>", round(frecuencia / sum(frecuencia) * 100, 1), "%"
         ),
         hoverinfo = "text"
-      )  |>
-        layout(legend = list(orientation = "v", x = 1, y = 0.5)) |>
+      )  |> 
+        layout(
+          legend = list(
+            orientation = "v",
+            x = 1,
+            y = 0.5
+          )
+        ) |> 
         config(
           modeBarButtonsToRemove = list("select2d", "lasso2d","hoverClosestCartesian", "hoverCompareCartesian","toggleSpikelines"),
           scrollZoom = TRUE,
@@ -265,15 +224,17 @@ observeEvent(click_grafica(), {
           locale = "es"
         )
       
-    } else if (seleccion_grafica == "Treemapify") {
+      
+    }else if(seleccion_grafica == "Treemapify"){
+      
       plot_ly(
         data = df,
         type = "treemap",
         labels = ~variable_seleccionada,
         values = ~frecuencia,
         parents = "",
-        textinfo = "none",
-        texttemplate = "%{label}<br> <b>Frecuencia: </b>%{value}<br><b> Porcentaje: </b> %{percentEntry:.0%}",
+        textinfo = "none",  
+        texttemplate = "%{label}<br> <b>Frecuencia: </b>%{value}<br><b> Porcentaje: </b> %{percentEntry:.0%}",  # Personalizado el texto
         hovertemplate = "<b>%{label}</b><br>Frecuencia: %{value}<br>Porcentaje: %{percentEntry:.0%}<extra></extra>",
         textposition = "middle center"
       ) |> plotly::config(
@@ -284,14 +245,13 @@ observeEvent(click_grafica(), {
         locale = "es"
       )
       
-    } else {
+    }else{
       cat("Seleccione algo")
     }
   })
-  
+}  
 
-  
-} 
+
 
 
 
