@@ -103,7 +103,12 @@ ui <- page_sidebar(
 
 server <- function(input, output, session) {
   
-  data <- reactiveVal(datos)   
+  data <- reactiveVal("https://docs.google.com/spreadsheets/d/e/2PACX-1vShNJnh442gay0BXd5hnYPUK1cC4j3JgKRvdHadU5DincbhNmCbWVmz2GlkqStUq8Ci--bGzlP5LfLg/pub?gid=0&single=true&output=csv" |> 
+                        read.csv() |> 
+                        dplyr::mutate(dplyr::across(
+                          .cols = dplyr::everything(),
+                          .fns = ~ ifelse(.x == "", "No hay dato", .x)
+                        )))   
   
   datos_filtrados_tabla <- reactive({
     filtros_tabla = input$tabla_search_columns
